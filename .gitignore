@@ -1,0 +1,6 @@
+target/
+data/*.sqlite
+data/thumbs/
+server.out.log
+server.err.log
+.agents/

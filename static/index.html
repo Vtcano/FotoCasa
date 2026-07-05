@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fotos iPhone</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Fotos iPhone</h1>
+          <p id="summary">Cargando indice local...</p>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="Filtros">
+        <input id="searchInput" type="search" placeholder="Buscar por nombre o carpeta" />
+        <select id="kindFilter" aria-label="Tipo de archivo">
+          <option value="all">Todo</option>
+          <option value="image">Fotos</option>
+          <option value="video">Videos</option>
+        </select>
+        <select id="dateFilter" aria-label="Fecha">
+          <option value="all">Todas las fechas</option>
+        </select>
+        <select id="countryFilter" aria-label="Pais">
+          <option value="all">Todos los paises</option>
+        </select>
+        <select id="cityFilter" aria-label="Ciudad">
+          <option value="all">Todas las ciudades</option>
+        </select>
+        <select id="peopleFilter" aria-label="Personas">
+          <option value="all">Todas las personas</option>
+        </select>
+        <label class="check-filter">
+          <input id="favoriteFilter" type="checkbox" />
+          Favoritas
+        </label>
+      </section>
+
+      <section class="bulkbar" aria-label="Edicion masiva">
+        <label class="check-filter">
+          <input id="selectMode" type="checkbox" />
+          Seleccionar
+        </label>
+        <span id="selectedCount">0 seleccionadas</span>
+        <input id="bulkCountry" type="text" placeholder="Pais nuevo" autocomplete="off" />
+        <input id="bulkCity" type="text" placeholder="Ciudad nueva" autocomplete="off" />
+        <button id="applyLocationBtn" type="button" disabled>Actualizar lugar</button>
+        <button id="clearSelectionBtn" type="button" class="secondary" disabled>Limpiar</button>
+      </section>
+
+      <div id="message" class="message" role="status"></div>
+      <section id="gallery" class="gallery" aria-label="Galeria de fotos"></section>
+      <div class="load-more-row">
+        <button id="loadMoreBtn" type="button" class="secondary" hidden>Cargar mas</button>
+      </div>
+    </main>
+
+    <dialog id="viewer" class="viewer">
+      <div class="viewer-bar">
+        <button id="prevBtn" type="button" aria-label="Anterior">Anterior</button>
+        <div>
+          <strong id="viewerName"></strong>
+          <span id="viewerMeta"></span>
+        </div>
+        <label class="viewer-favorite">
+          <input id="favoriteCheckbox" type="checkbox" />
+          Favorita
+        </label>
+        <button id="rotateLeftBtn" type="button" class="secondary" aria-label="Girar izquierda">Girar izq.</button>
+        <button id="rotateRightBtn" type="button" class="secondary" aria-label="Girar derecha">Girar der.</button>
+        <button id="nextBtn" type="button" aria-label="Siguiente">Siguiente</button>
+        <button id="closeBtn" type="button" aria-label="Cerrar">Cerrar</button>
+      </div>
+      <div id="viewerStage" class="viewer-stage"></div>
+      <dl id="viewerDetails" class="viewer-details"></dl>
+    </dialog>
+
+    <template id="photoTemplate">
+      <button class="photo-card" type="button">
+        <span class="thumb"></span>
+        <span class="photo-info">
+          <strong></strong>
+          <small></small>
+        </span>
+      </button>
+    </template>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
