@@ -498,7 +498,7 @@ function startSettingsPolling() {
   }
 
   settingsPoll = setInterval(async () => {
-    if (!settingsDialog.open) {
+    if (!isSettingsOpen()) {
       clearInterval(settingsPoll);
       settingsPoll = null;
       return;
@@ -512,8 +512,38 @@ function startSettingsPolling() {
   }, 1500);
 }
 
+function isSettingsOpen() {
+  return settingsDialog.open || settingsDialog.classList.contains("is-open");
+}
+
+function showSettingsDialog() {
+  settingsDialog.classList.add("is-open");
+
+  if (typeof settingsDialog.showModal === "function" && !settingsDialog.open) {
+    try {
+      settingsDialog.showModal();
+      return;
+    } catch {
+      // Fallback for browsers that expose dialog but cannot open it modally.
+    }
+  }
+
+  settingsDialog.setAttribute("open", "");
+}
+
+function closeSettingsDialog() {
+  settingsDialog.classList.remove("is-open");
+
+  if (typeof settingsDialog.close === "function" && settingsDialog.open) {
+    settingsDialog.close();
+    return;
+  }
+
+  settingsDialog.removeAttribute("open");
+}
+
 async function openSettings() {
-  settingsDialog.showModal();
+  showSettingsDialog();
   thumbJobStatus.textContent = "Leyendo ajustes...";
 
   try {
@@ -644,13 +674,14 @@ async function checkGeocodeStatus() {
 refreshBtn?.addEventListener("click", refreshIndex);
 geocodeBtn?.addEventListener("click", geocodeLocations);
 settingsBtn.addEventListener("click", openSettings);
-closeSettingsBtn.addEventListener("click", () => settingsDialog.close());
+closeSettingsBtn.addEventListener("click", closeSettingsDialog);
 settingsDialog.addEventListener("click", (event) => {
   if (event.target === settingsDialog) {
-    settingsDialog.close();
+    closeSettingsDialog();
   }
 });
 settingsDialog.addEventListener("close", () => {
+  settingsDialog.classList.remove("is-open");
   if (settingsPoll) {
     clearInterval(settingsPoll);
     settingsPoll = null;

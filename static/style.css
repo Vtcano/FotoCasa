@@ -282,6 +282,9 @@ select {
 }
 
 .settings-dialog {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
   width: min(420px, calc(100vw - 28px));
   border: 0;
   border-radius: 8px;
@@ -289,6 +292,11 @@ select {
   color: #172033;
   background: white;
   box-shadow: 0 20px 60px rgba(15, 23, 36, 0.22);
+  z-index: 30;
+}
+
+.settings-dialog:not([open]):not(.is-open) {
+  display: none;
 }
 
 .settings-dialog::backdrop {
