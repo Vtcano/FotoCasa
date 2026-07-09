@@ -29,12 +29,21 @@ const prevBtn = document.querySelector("#prevBtn");
 const nextBtn = document.querySelector("#nextBtn");
 const rotateLeftBtn = document.querySelector("#rotateLeftBtn");
 const rotateRightBtn = document.querySelector("#rotateRightBtn");
+const settingsBtn = document.querySelector("#settingsBtn");
+const settingsDialog = document.querySelector("#settingsDialog");
+const closeSettingsBtn = document.querySelector("#closeSettingsBtn");
+const thumbsLoaded = document.querySelector("#thumbsLoaded");
+const totalPhotos = document.querySelector("#totalPhotos");
+const totalVideos = document.querySelector("#totalVideos");
+const thumbJobStatus = document.querySelector("#thumbJobStatus");
+const toggleThumbsBtn = document.querySelector("#toggleThumbsBtn");
 
 let photos = [];
 let visiblePhotos = [];
 let currentIndex = 0;
 let renderLimit = 50;
 let geocodePoll = null;
+let settingsPoll = null;
 const pageSize = 50;
 const selectedIds = new Set();
 
@@ -52,6 +61,10 @@ async function api(path, options = {}) {
   }
 
   return response.json();
+}
+
+function formatCount(value) {
+  return Number(value || 0).toLocaleString();
 }
 
 function fillSelect(select, values, defaultLabel) {
@@ -457,6 +470,74 @@ async function rotatePhoto(direction) {
   }
 }
 
+function renderThumbnailJob(job) {
+  if (!job) {
+    thumbJobStatus.textContent = "Sin generacion activa";
+    toggleThumbsBtn.textContent = "Generar mini fotos";
+    toggleThumbsBtn.disabled = false;
+    return;
+  }
+
+  const progress = job.total > 0 ? ` (${formatCount(job.processed)}/${formatCount(job.total)})` : "";
+  thumbJobStatus.textContent = `${job.message || "Sin generacion activa"}${progress}`;
+  toggleThumbsBtn.textContent = job.running ? "Parar generacion" : "Generar mini fotos";
+  toggleThumbsBtn.disabled = job.stop_requested === true;
+}
+
+async function loadSettingsStats() {
+  const stats = await api("/settings/stats");
+  thumbsLoaded.textContent = formatCount(stats.thumbnails_loaded);
+  totalPhotos.textContent = formatCount(stats.total_photos);
+  totalVideos.textContent = formatCount(stats.total_videos);
+  renderThumbnailJob(stats.thumbnail_job);
+}
+
+function startSettingsPolling() {
+  if (settingsPoll) {
+    clearInterval(settingsPoll);
+  }
+
+  settingsPoll = setInterval(async () => {
+    if (!settingsDialog.open) {
+      clearInterval(settingsPoll);
+      settingsPoll = null;
+      return;
+    }
+
+    try {
+      await loadSettingsStats();
+    } catch (error) {
+      thumbJobStatus.textContent = error.message;
+    }
+  }, 1500);
+}
+
+async function openSettings() {
+  settingsDialog.showModal();
+  thumbJobStatus.textContent = "Leyendo ajustes...";
+
+  try {
+    await loadSettingsStats();
+    startSettingsPolling();
+  } catch (error) {
+    thumbJobStatus.textContent = error.message;
+  }
+}
+
+async function toggleThumbnailGeneration() {
+  toggleThumbsBtn.disabled = true;
+
+  try {
+    const job = await api("/thumbnails/toggle", { method: "POST" });
+    renderThumbnailJob(job);
+    await loadSettingsStats();
+    startSettingsPolling();
+  } catch (error) {
+    thumbJobStatus.textContent = error.message;
+    toggleThumbsBtn.disabled = false;
+  }
+}
+
 async function loadPhotos() {
   showMessage("Leyendo indice...");
   if (refreshBtn) {
@@ -562,6 +643,20 @@ async function checkGeocodeStatus() {
 
 refreshBtn?.addEventListener("click", refreshIndex);
 geocodeBtn?.addEventListener("click", geocodeLocations);
+settingsBtn.addEventListener("click", openSettings);
+closeSettingsBtn.addEventListener("click", () => settingsDialog.close());
+settingsDialog.addEventListener("click", (event) => {
+  if (event.target === settingsDialog) {
+    settingsDialog.close();
+  }
+});
+settingsDialog.addEventListener("close", () => {
+  if (settingsPoll) {
+    clearInterval(settingsPoll);
+    settingsPoll = null;
+  }
+});
+toggleThumbsBtn.addEventListener("click", toggleThumbnailGeneration);
 searchInput.addEventListener("input", applyFilters);
 kindFilter.addEventListener("change", applyFilters);
 dateFilter.addEventListener("change", applyFilters);

@@ -13,6 +13,7 @@
           <h1>Fotos iPhone</h1>
           <p id="summary">Cargando indice local...</p>
         </div>
+        <button id="settingsBtn" type="button" class="secondary">Ajustes</button>
       </header>
 
       <section class="toolbar" aria-label="Filtros">
@@ -58,6 +59,29 @@
         <button id="loadMoreBtn" type="button" class="secondary" hidden>Cargar mas</button>
       </div>
     </main>
+
+    <dialog id="settingsDialog" class="settings-dialog">
+      <div class="settings-head">
+        <h2>Ajustes</h2>
+        <button id="closeSettingsBtn" type="button" class="secondary" aria-label="Cerrar">Cerrar</button>
+      </div>
+      <dl class="settings-stats">
+        <div>
+          <dt>Mini fotos cargadas</dt>
+          <dd id="thumbsLoaded">-</dd>
+        </div>
+        <div>
+          <dt>Fotos totales</dt>
+          <dd id="totalPhotos">-</dd>
+        </div>
+        <div>
+          <dt>Videos totales</dt>
+          <dd id="totalVideos">-</dd>
+        </div>
+      </dl>
+      <p id="thumbJobStatus" class="settings-status">Sin generacion activa</p>
+      <button id="toggleThumbsBtn" type="button">Generar mini fotos</button>
+    </dialog>
 
     <dialog id="viewer" class="viewer">
       <div class="viewer-bar">

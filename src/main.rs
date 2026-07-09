@@ -40,6 +40,7 @@ struct AppState {
     geo_lock: Arc<Mutex<()>>,
     geo_job: Arc<Mutex<GeocodeJob>>,
     favorite_job: Arc<Mutex<FavoriteScanJob>>,
+    thumbnail_job: Arc<Mutex<ThumbnailJob>>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -118,6 +119,41 @@ struct BulkLocationResult {
 #[derive(Debug, Deserialize)]
 struct RotatePayload {
     direction: String,
+}
+
+#[derive(Debug, Serialize)]
+struct SettingsStats {
+    thumbnails_loaded: usize,
+    total_photos: i64,
+    total_videos: i64,
+    thumbnail_job: ThumbnailJob,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ThumbnailJob {
+    running: bool,
+    stop_requested: bool,
+    total: usize,
+    processed: usize,
+    created: usize,
+    skipped: usize,
+    failed: usize,
+    message: String,
+}
+
+impl Default for ThumbnailJob {
+    fn default() -> Self {
+        Self {
+            running: false,
+            stop_requested: false,
+            total: 0,
+            processed: 0,
+            created: 0,
+            skipped: 0,
+            failed: 0,
+            message: "Sin generacion activa".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -211,6 +247,7 @@ async fn main() -> anyhow::Result<()> {
         geo_lock: Arc::new(Mutex::new(())),
         geo_job: Arc::new(Mutex::new(GeocodeJob::default())),
         favorite_job: Arc::new(Mutex::new(FavoriteScanJob::default())),
+        thumbnail_job: Arc::new(Mutex::new(ThumbnailJob::default())),
     };
 
     let api = Router::new()
@@ -224,6 +261,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/favorites/scan", post(start_favorite_scan))
         .route("/favorites/scan/status", get(favorite_scan_status))
         .route("/filters", get(list_filters))
+        .route("/settings/stats", get(settings_stats))
+        .route("/thumbnails/toggle", post(toggle_thumbnail_generation))
+        .route("/thumbnails/status", get(thumbnail_status))
         .route("/refresh", post(refresh_index))
         .route("/normalize-countries", post(normalize_countries))
         .route("/normalize-cities", post(normalize_cities))
@@ -467,7 +507,7 @@ async fn rotate_photo(
         .await
         .map_err(|_| AppError::internal("No se pudo girar la foto"))??;
 
-    let thumb_path = PathBuf::from(THUMB_DIR).join(format!("oriented-{id}.jpg"));
+    let thumb_path = thumbnail_path(&id);
     if thumb_path.exists() {
         fs::remove_file(thumb_path)?;
     }
@@ -603,6 +643,148 @@ async fn list_filters(State(state): State<AppState>) -> Result<Json<Filters>, Ap
         cities,
         people,
     }))
+}
+
+async fn settings_stats(State(state): State<AppState>) -> Result<Json<SettingsStats>, AppError> {
+    ensure_index_if_empty(&state).await?;
+
+    let total_photos: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM photos WHERE kind = 'image'")
+        .fetch_one(&state.db)
+        .await?;
+    let total_videos: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM photos WHERE kind = 'video'")
+        .fetch_one(&state.db)
+        .await?;
+    let image_ids = sqlx::query_scalar::<_, String>("SELECT id FROM photos WHERE kind = 'image'")
+        .fetch_all(&state.db)
+        .await?;
+    let thumbnails_loaded = image_ids
+        .iter()
+        .filter(|id| thumbnail_path(id).exists())
+        .count();
+    let thumbnail_job = state.thumbnail_job.lock().await.clone();
+
+    Ok(Json(SettingsStats {
+        thumbnails_loaded,
+        total_photos,
+        total_videos,
+        thumbnail_job,
+    }))
+}
+
+async fn toggle_thumbnail_generation(
+    State(state): State<AppState>,
+) -> Result<Json<ThumbnailJob>, AppError> {
+    ensure_index_if_empty(&state).await?;
+
+    {
+        let mut job = state.thumbnail_job.lock().await;
+        if job.running {
+            job.stop_requested = true;
+            job.message = "Parando generacion de mini fotos...".to_string();
+            return Ok(Json(job.clone()));
+        }
+
+        *job = ThumbnailJob {
+            running: true,
+            stop_requested: false,
+            total: 0,
+            processed: 0,
+            created: 0,
+            skipped: 0,
+            failed: 0,
+            message: "Preparando mini fotos...".to_string(),
+        };
+    }
+
+    let state_for_job = state.clone();
+    tokio::spawn(async move {
+        if let Err(error) = run_thumbnail_generation(state_for_job.clone()).await {
+            let mut job = state_for_job.thumbnail_job.lock().await;
+            job.running = false;
+            job.stop_requested = false;
+            job.message = error.message;
+        }
+    });
+
+    Ok(Json(state.thumbnail_job.lock().await.clone()))
+}
+
+async fn thumbnail_status(State(state): State<AppState>) -> Json<ThumbnailJob> {
+    Json(state.thumbnail_job.lock().await.clone())
+}
+
+async fn run_thumbnail_generation(state: AppState) -> Result<(), AppError> {
+    let rows = sqlx::query_as::<_, (String, String, String)>(
+        "SELECT id, relative_path, extension FROM photos WHERE kind = 'image' ORDER BY COALESCE(captured_at, date_bucket, name) ASC",
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let pending: Vec<(String, String)> = rows
+        .into_iter()
+        .filter(|(id, _, extension)| {
+            is_thumbnail_supported_extension(extension) && !thumbnail_path(id).exists()
+        })
+        .map(|(id, relative_path, _)| (id, relative_path))
+        .collect();
+
+    {
+        let mut job = state.thumbnail_job.lock().await;
+        job.total = pending.len();
+        job.message = if pending.is_empty() {
+            "Todas las mini fotos soportadas estan generadas".to_string()
+        } else {
+            format!("0/{} mini fotos", pending.len())
+        };
+    }
+
+    for (id, relative_path) in pending {
+        {
+            let job = state.thumbnail_job.lock().await;
+            if job.stop_requested {
+                drop(job);
+                let mut job = state.thumbnail_job.lock().await;
+                job.running = false;
+                job.stop_requested = false;
+                job.message = format!("Generacion parada en {}/{}", job.processed, job.total);
+                return Ok(());
+            }
+        }
+
+        let source_path = match safe_media_path(&state.photo_root, &relative_path) {
+            Ok(path) => path,
+            Err(_) => {
+                let mut job = state.thumbnail_job.lock().await;
+                job.processed += 1;
+                job.failed += 1;
+                job.message = format!("{}/{} mini fotos", job.processed, job.total);
+                continue;
+            }
+        };
+        let target_path = thumbnail_path(&id);
+        let result = task::spawn_blocking(move || create_thumbnail(&source_path, &target_path))
+            .await
+            .map_err(|_| AppError::internal("No se pudo crear miniatura"));
+
+        let mut job = state.thumbnail_job.lock().await;
+        job.processed += 1;
+        match result {
+            Ok(Ok(())) => job.created += 1,
+            Ok(Err(_)) => job.failed += 1,
+            Err(_) => job.failed += 1,
+        }
+        job.message = format!("{}/{} mini fotos", job.processed, job.total);
+    }
+
+    let mut job = state.thumbnail_job.lock().await;
+    job.running = false;
+    job.stop_requested = false;
+    job.message = format!(
+        "Mini fotos listas: {} creadas, {} fallidas",
+        job.created, job.failed
+    );
+
+    Ok(())
 }
 
 async fn refresh_index(State(state): State<AppState>) -> Result<Json<RefreshResult>, AppError> {
@@ -1132,7 +1314,7 @@ async fn serve_thumbnail(
 ) -> Result<impl IntoResponse, AppError> {
     let relative = decode_id(&id)?;
     let source_path = safe_media_path(&state.photo_root, &relative)?;
-    let thumb_path = PathBuf::from(THUMB_DIR).join(format!("oriented-{id}.jpg"));
+    let thumb_path = thumbnail_path(&id);
 
     if !thumb_path.exists() {
         let source = source_path.clone();
@@ -1179,6 +1361,17 @@ fn create_thumbnail(source: &FsPath, target: &FsPath) -> Result<(), AppError> {
         .map_err(|_| AppError::internal("No se pudo guardar la miniatura"))?;
 
     Ok(())
+}
+
+fn thumbnail_path(id: &str) -> PathBuf {
+    PathBuf::from(THUMB_DIR).join(format!("oriented-{id}.jpg"))
+}
+
+fn is_thumbnail_supported_extension(extension: &str) -> bool {
+    matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp"
+    )
 }
 
 fn decode_oriented_image(source: &FsPath) -> Result<(DynamicImage, Option<Vec<u8>>), AppError> {
