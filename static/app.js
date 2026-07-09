@@ -513,33 +513,21 @@ function startSettingsPolling() {
 }
 
 function isSettingsOpen() {
-  return settingsDialog.open || settingsDialog.classList.contains("is-open");
+  return !settingsDialog.hidden;
 }
 
 function showSettingsDialog() {
-  settingsDialog.classList.add("is-open");
-
-  if (typeof settingsDialog.showModal === "function" && !settingsDialog.open) {
-    try {
-      settingsDialog.showModal();
-      return;
-    } catch {
-      // Fallback for browsers that expose dialog but cannot open it modally.
-    }
-  }
-
-  settingsDialog.setAttribute("open", "");
+  settingsDialog.hidden = false;
+  document.body.classList.add("modal-open");
 }
 
 function closeSettingsDialog() {
-  settingsDialog.classList.remove("is-open");
-
-  if (typeof settingsDialog.close === "function" && settingsDialog.open) {
-    settingsDialog.close();
-    return;
+  settingsDialog.hidden = true;
+  document.body.classList.remove("modal-open");
+  if (settingsPoll) {
+    clearInterval(settingsPoll);
+    settingsPoll = null;
   }
-
-  settingsDialog.removeAttribute("open");
 }
 
 async function openSettings() {
@@ -680,13 +668,6 @@ settingsDialog.addEventListener("click", (event) => {
     closeSettingsDialog();
   }
 });
-settingsDialog.addEventListener("close", () => {
-  settingsDialog.classList.remove("is-open");
-  if (settingsPoll) {
-    clearInterval(settingsPoll);
-    settingsPoll = null;
-  }
-});
 toggleThumbsBtn.addEventListener("click", toggleThumbnailGeneration);
 searchInput.addEventListener("input", applyFilters);
 kindFilter.addEventListener("change", applyFilters);
@@ -744,6 +725,11 @@ loadMoreBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && isSettingsOpen()) {
+    closeSettingsDialog();
+    return;
+  }
+
   if (!viewer.open) {
     return;
   }
