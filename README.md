@@ -20,7 +20,21 @@ Tambien guarda `latitude` y `longitude` cuando la foto tiene GPS. Esas coordenad
 
 ## Ejecutar
 
-Desde esta carpeta:
+La forma comoda en Windows es doble clic en:
+
+```text
+iniciar_fotocasa.bat
+```
+
+Ese script compila si hace falta y arranca el motor en segundo plano en el puerto `3000`.
+
+Para pararlo:
+
+```text
+parar_fotocasa.bat
+```
+
+Tambien puedes arrancarlo a mano desde esta carpeta:
 
 ```powershell
 cargo run
@@ -97,10 +111,12 @@ El filtro de ciudad se activa solo despues de elegir un pais.
 
 ## Pais y ciudad
 
-Para asignar pais y ciudad:
+La app guarda `pais` y `ciudad` en el indice local. Puedes corregirlo manualmente desde la web:
 
-1. Pulsa `Actualizar indice` para leer archivos y coordenadas GPS.
-2. Pulsa `Asignar lugares` para convertir coordenadas GPS en pais/ciudad.
+1. Activa `Seleccionar`.
+2. Marca una o varias fotos.
+3. Escribe pais, ciudad o ambos.
+4. Pulsa `Actualizar lugar`.
 
 Si una foto no tiene GPS, o no se puede resolver su ubicacion, se guarda como:
 
